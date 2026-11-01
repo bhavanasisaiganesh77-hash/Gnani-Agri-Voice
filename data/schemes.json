@@ -1,0 +1,54 @@
+{
+ "schemes": [
+  {
+   "id": "pm_kisan",
+   "name": "PM-KISAN (Pradhan Mantri Kisan Samman Nidhi)",
+   "eligibility": "Landholding farmer families with cultivable land recorded in state land records, subject to the scheme's exclusion rules (higher-income categories are excluded). One registration per family.",
+   "benefits": "Income support of Rs 6,000 per year in three equal instalments of Rs 2,000, paid directly into the bank account (DBT).",
+   "documents": ["Aadhaar", "Bank account details (Aadhaar-linked)", "Land ownership records", "e-KYC is mandatory"],
+   "official_url": "https://pmkisan.gov.in",
+   "last_verified": "2026-10-30",
+   "verified_note": "Checked on 30 Oct 2026 against the PM-KISAN portal reference, a state government scheme page (wb.gov.in) and recent news reports. Instalment dates change; confirm on the portal."
+  },
+  {
+   "id": "pmfby",
+   "name": "PMFBY (Pradhan Mantri Fasal Bima Yojana) - crop insurance",
+   "eligibility": "Farmers growing notified crops in notified areas for the season, including sharecroppers and tenant farmers. Enrolment is voluntary. Notified crops, areas and last dates differ by state and season.",
+   "benefits": "Insurance cover against crop loss from natural calamities, pests and diseases. Farmer pays up to 2% of the sum insured for Kharif food and oilseed crops, up to 1.5% for Rabi food and oilseed crops, and up to 5% for annual commercial and horticultural crops. The rest of the premium is subsidised by the Centre and the state.",
+   "documents": ["Aadhaar", "Bank account details", "Land records or tenancy / sowing declaration", "Details of the crop sown"],
+   "official_url": "https://pmfby.gov.in",
+   "last_verified": "2026-10-30",
+   "verified_note": "Premium rates checked on 30 Oct 2026 across several sources. Enrolment last dates vary by state and season: check your state's notification."
+  },
+  {
+   "id": "soil_health_card",
+   "name": "Soil Health Card Scheme",
+   "eligibility": "Farmers across India can have their soil tested through the scheme.",
+   "benefits": "A soil health card with the nutrient status of your soil and fertilizer recommendations for your crops.",
+   "documents": ["Details of your land and crops (ask your local agriculture office)"],
+   "official_url": "https://soilhealth.dac.gov.in",
+   "last_verified": null,
+   "verified_note": ""
+  },
+  {
+   "id": "kcc",
+   "name": "Kisan Credit Card (KCC)",
+   "eligibility": "Farmers who cultivate land, including tenant farmers and sharecroppers, as per the lending bank's rules.",
+   "benefits": "Short-term credit for farming needs through your bank. Interest benefits may be available. Terms differ by bank.",
+   "documents": ["Identity proof", "Land records or tenancy proof", "Bank's application form"],
+   "official_url": "https://www.myscheme.gov.in",
+   "last_verified": null,
+   "verified_note": ""
+  },
+  {
+   "id": "enam",
+   "name": "e-NAM (National Agriculture Market)",
+   "eligibility": "Farmers who sell produce through registered mandis connected to e-NAM.",
+   "benefits": "An online trading platform that lets farmers see prices from connected mandis and sell to buyers across markets.",
+   "documents": ["Aadhaar", "Bank account details", "Mobile number", "Registration at your mandi or on the portal"],
+   "official_url": "https://enam.gov.in",
+   "last_verified": null,
+   "verified_note": ""
+  }
+ ]
+}
