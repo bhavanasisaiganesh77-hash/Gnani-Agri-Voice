@@ -312,6 +312,19 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
     background-color: #2E7D32 !important;
     border: 1px solid #1B5E20 !important;
 }
+/* ---------- Login welcome box: force white text ---------- */
+.stApp [class*="st-key-auth_brand"],
+.stApp [class*="st-key-auth_brand"] h1,
+.stApp [class*="st-key-auth_brand"] h2,
+.stApp [class*="st-key-auth_brand"] h3,
+.stApp [class*="st-key-auth_brand"] p,
+.stApp [class*="st-key-auth_brand"] li,
+.stApp [class*="st-key-auth_brand"] span,
+.stApp [class*="st-key-auth_brand"] strong,
+.stApp [class*="st-key-auth_brand"] b {
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+}
 </style>
 """.replace("__GOOGLE__", GOOGLE_ICON_URI)
 
