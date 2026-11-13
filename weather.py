@@ -16,25 +16,33 @@ GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 TIMEOUT_SECONDS = 15
-CACHE_SECONDS = 600
-GEOCODE_CACHE_SECONDS = 3600
+
+# Shared cache durations.
+CACHE_SECONDS = 1800
+GEOCODE_CACHE_SECONDS = 86400
+
+# Rate-limit protection.
 RATE_LIMIT_COOLDOWN_SECONDS = 300
 
 _cache = {}
 _geocode_cache = {}
 
 _lock = threading.Lock()
+
 _forecast_locks = {}
+_geocode_locks = {}
 
 # One shared cooldown for all Open-Meteo endpoints.
 _api_rate_limited_until = 0
 
 
 class WeatherError(Exception):
+    """General weather service error."""
     pass
 
 
 class WeatherRateLimitError(WeatherError):
+    """Open-Meteo rate limit error."""
     pass
 
 
@@ -110,12 +118,15 @@ def _get(url: str, params: dict) -> dict:
         raise WeatherError("unavailable") from exc
 
     except ValueError as exc:
-        log.exception("Open-Meteo JSON parsing failure: %s", exc)
+        log.exception(
+            "Open-Meteo JSON parsing failure: %s",
+            exc
+        )
         raise WeatherError("unavailable") from exc
 
 
 def geocode(name: str, state: str = "", limit: int = 5) -> list:
-    """Find places in India matching a location name."""
+    """Find places in India using cache and duplicate-request protection."""
 
     name = " ".join((name or "").split())[:80]
     state = " ".join((state or "").split())
@@ -124,72 +135,91 @@ def geocode(name: str, state: str = "", limit: int = 5) -> list:
         return []
 
     key = (name.lower(), state.lower(), limit)
-    now = time.time()
 
+    # Get or create a lock for this exact location search.
     with _lock:
-        hit = _geocode_cache.get(key)
-
-        if hit and now - hit[0] < GEOCODE_CACHE_SECONDS:
-            return [dict(place) for place in hit[1]]
-
-    data = _get(
-        GEOCODE_URL,
-        {
-            "name": name,
-            "count": 10,
-            "language": "en",
-            "format": "json"
-        }
-    )
-
-    places = [
-        r for r in (data.get("results") or [])
-        if r.get("country_code") == "IN"
-    ]
-
-    if state:
-        places.sort(
-            key=lambda r: 0 if state.lower() in
-            str(r.get("admin1", "")).lower() else 1
+        request_lock = _geocode_locks.setdefault(
+            key,
+            threading.Lock()
         )
 
-    out = []
+    # Only one identical search can make an API request at a time.
+    with request_lock:
 
-    for r in places[:limit]:
-        label = ", ".join(
-            x for x in (
-                r.get("name"),
-                r.get("admin2"),
-                r.get("admin1")
-            ) if x
+        # Check cache after acquiring the lock.
+        now = time.time()
+
+        with _lock:
+            hit = _geocode_cache.get(key)
+
+            if hit and now - hit[0] < GEOCODE_CACHE_SECONDS:
+                return [dict(place) for place in hit[1]]
+
+        data = _get(
+            GEOCODE_URL,
+            {
+                "name": name,
+                "count": 10,
+                "language": "en",
+                "format": "json"
+            }
         )
 
-        out.append({
-            "name": r.get("name"),
-            "state": r.get("admin1", ""),
-            "latitude": r["latitude"],
-            "longitude": r["longitude"],
-            "label": label
-        })
+        places = [
+            r for r in (data.get("results") or [])
+            if r.get("country_code") == "IN"
+        ]
 
-    with _lock:
-        _geocode_cache[key] = (time.time(), out)
+        if state:
+            places.sort(
+                key=lambda r: 0 if state.lower() in
+                str(r.get("admin1", "")).lower() else 1
+            )
 
-    return [dict(place) for place in out]
+        out = []
+
+        for r in places[:limit]:
+            label = ", ".join(
+                x for x in (
+                    r.get("name"),
+                    r.get("admin2"),
+                    r.get("admin1")
+                ) if x
+            )
+
+            out.append({
+                "name": r.get("name"),
+                "state": r.get("admin1", ""),
+                "latitude": r["latitude"],
+                "longitude": r["longitude"],
+                "label": label
+            })
+
+        with _lock:
+            _geocode_cache[key] = (time.time(), out)
+
+        return [dict(place) for place in out]
 
 
 def forecast(latitude: float, longitude: float) -> dict:
     """Get current conditions and a four-day forecast."""
 
+    latitude = float(latitude)
+    longitude = float(longitude)
+
+    # Round coordinates for consistent cache keys.
     key = (round(latitude, 2), round(longitude, 2))
 
+    # Get or create a lock for this location.
     with _lock:
         request_lock = _forecast_locks.setdefault(
             key,
             threading.Lock()
         )
 
+    # Only one forecast request per cache key can run at a time.
     with request_lock:
+
         now = time.time()
 
         with _lock:
@@ -199,8 +229,8 @@ def forecast(latitude: float, longitude: float) -> dict:
                 return hit[1]
 
         params = {
-            "latitude": latitude,
-            "longitude": longitude,
+            "latitude": key[0],
+            "longitude": key[1],
             "timezone": "auto",
             "forecast_days": 4,
             "current": (
