@@ -17,16 +17,17 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 TIMEOUT_SECONDS = 15
 CACHE_SECONDS = 600
-RATE_LIMIT_COOLDOWN_SECONDS = 60
+GEOCODE_CACHE_SECONDS = 3600
+RATE_LIMIT_COOLDOWN_SECONDS = 300
 
 _cache = {}
-_lock = threading.Lock()
+_geocode_cache = {}
 
-# Prevent simultaneous requests for the same location.
+_lock = threading.Lock()
 _forecast_locks = {}
 
-# Remember locations temporarily rejected with HTTP 429.
-_rate_limited_until = {}
+# One shared cooldown for all Open-Meteo endpoints.
+_api_rate_limited_until = 0
 
 
 class WeatherError(Exception):
@@ -37,7 +38,27 @@ class WeatherRateLimitError(WeatherError):
     pass
 
 
+def _check_rate_limit():
+    """Prevent requests while Open-Meteo is rate-limiting us."""
+
+    with _lock:
+        remaining = _api_rate_limited_until - time.time()
+
+    if remaining > 0:
+        log.warning(
+            "Open-Meteo request skipped. Cooldown remaining: %s seconds",
+            int(remaining)
+        )
+        raise WeatherRateLimitError("rate limited")
+
+
 def _get(url: str, params: dict) -> dict:
+    """Make a request while respecting the shared API cooldown."""
+
+    global _api_rate_limited_until
+
+    _check_rate_limit()
+
     try:
         response = requests.get(
             url,
@@ -61,8 +82,14 @@ def _get(url: str, params: dict) -> dict:
 
             cooldown = max(30, min(cooldown, 300))
 
+            with _lock:
+                _api_rate_limited_until = max(
+                    _api_rate_limited_until,
+                    time.time() + cooldown
+                )
+
             log.warning(
-                "Open-Meteo rate limit reached. Cooldown: %s seconds",
+                "Open-Meteo rate limit reached. Global cooldown: %s seconds",
                 cooldown
             )
 
@@ -83,10 +110,7 @@ def _get(url: str, params: dict) -> dict:
         raise WeatherError("unavailable") from exc
 
     except ValueError as exc:
-        log.exception(
-            "Open-Meteo JSON parsing failure: %s",
-            exc
-        )
+        log.exception("Open-Meteo JSON parsing failure: %s", exc)
         raise WeatherError("unavailable") from exc
 
 
@@ -94,9 +118,19 @@ def geocode(name: str, state: str = "", limit: int = 5) -> list:
     """Find places in India matching a location name."""
 
     name = " ".join((name or "").split())[:80]
+    state = " ".join((state or "").split())
 
     if len(name) < 2:
         return []
+
+    key = (name.lower(), state.lower(), limit)
+    now = time.time()
+
+    with _lock:
+        hit = _geocode_cache.get(key)
+
+        if hit and now - hit[0] < GEOCODE_CACHE_SECONDS:
+            return [dict(place) for place in hit[1]]
 
     data = _get(
         GEOCODE_URL,
@@ -138,7 +172,10 @@ def geocode(name: str, state: str = "", limit: int = 5) -> list:
             "label": label
         })
 
-    return out
+    with _lock:
+        _geocode_cache[key] = (time.time(), out)
+
+    return [dict(place) for place in out]
 
 
 def forecast(latitude: float, longitude: float) -> dict:
@@ -146,16 +183,13 @@ def forecast(latitude: float, longitude: float) -> dict:
 
     key = (round(latitude, 2), round(longitude, 2))
 
-    # Get or create a lock for this particular location.
     with _lock:
         request_lock = _forecast_locks.setdefault(
             key,
             threading.Lock()
         )
 
-    # Only one request for this location can run at a time.
     with request_lock:
-
         now = time.time()
 
         with _lock:
@@ -163,17 +197,6 @@ def forecast(latitude: float, longitude: float) -> dict:
 
             if hit and now - hit[0] < CACHE_SECONDS:
                 return hit[1]
-
-            cooldown_until = _rate_limited_until.get(key, 0)
-
-            if now < cooldown_until:
-                log.warning(
-                    "Weather request skipped during rate-limit cooldown."
-                )
-                raise WeatherError("rate limited")
-
-            # Remove expired cooldown.
-            _rate_limited_until.pop(key, None)
 
         params = {
             "latitude": latitude,
@@ -191,15 +214,7 @@ def forecast(latitude: float, longitude: float) -> dict:
             )
         }
 
-        try:
-            data = _get(FORECAST_URL, params)
-
-        except WeatherRateLimitError:
-            with _lock:
-                _rate_limited_until[key] = (
-                    time.time() + RATE_LIMIT_COOLDOWN_SECONDS
-                )
-            raise
+        data = _get(FORECAST_URL, params)
 
         if "current" not in data or "daily" not in data:
             raise WeatherError("bad reply")
@@ -220,7 +235,7 @@ def precaution_keys(data: dict) -> list:
         try:
             v = (daily.get(series) or [])[i]
             return default if v is None else v
-        except IndexError:
+        except (IndexError, TypeError):
             return default
 
     keys = []
