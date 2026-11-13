@@ -26,12 +26,35 @@ class WeatherError(Exception):
 
 def _get(url: str, params: dict) -> dict:
     try:
-        response = requests.get(url, params=params, timeout=TIMEOUT_SECONDS)
+        response = requests.get(
+            url,
+            params=params,
+            timeout=TIMEOUT_SECONDS
+        )
+
+        log.info(
+            "Open-Meteo response: status=%s host=%s",
+            response.status_code,
+            url.split("/")[2]
+        )
+
         response.raise_for_status()
         return response.json()
-    except (requests.RequestException, ValueError):
-        log.warning("open-meteo request failed (%s)", url.split("/")[2])
-        raise WeatherError("unavailable")
+
+    except requests.RequestException as exc:
+        log.exception(
+            "Open-Meteo network/API failure: %s - %s",
+            type(exc).__name__,
+            url.split("/")[2]
+        )
+        raise WeatherError("unavailable") from exc
+
+    except ValueError as exc:
+        log.exception(
+            "Open-Meteo JSON parsing failure: %s",
+            exc
+        )
+        raise WeatherError("unavailable") from exc
 
 
 def geocode(name: str, state: str = "", limit: int = 5) -> list:
